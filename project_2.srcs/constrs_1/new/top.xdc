@@ -4,11 +4,11 @@ set_property -dict {PACKAGE_PIN Y9 IOSTANDARD LVCMOS33} [get_ports clk]
 set_property -dict {PACKAGE_PIN T18 IOSTANDARD LVCMOS33} [get_ports rst]
 
 set_property -dict {PACKAGE_PIN Y11 IOSTANDARD LVCMOS33} [get_ports i2c_scl]
-#set_property -dict { PULLUP false } [get_ports { i2c_scl }]
-set_property -dict { PULLUP false } [get_ports { i2c_sda }]
+#set_property -dict { PULLUP false } [get_ports { i2c_scl }] not necessary
+#set_property -dict { PULLUP false } [get_ports { i2c_sda }] not necessary
 set_property -dict {PACKAGE_PIN AA11 IOSTANDARD LVCMOS33} [get_ports i2c_sda]
-set_property -dict { PULLDOWN false } [get_ports { i2c_sda }]
-set_property -dict { PULLDOWN false } [get_ports { i2c_scl }]
+#set_property -dict { PULLDOWN false } [get_ports { i2c_sda }] not necessary
+#set_property -dict { PULLDOWN false } [get_ports { i2c_scl }] not necessary
 
 set_property -dict {PACKAGE_PIN M15 IOSTANDARD LVCMOS33} [get_ports write_config]
 set_property -dict {PACKAGE_PIN H17 IOSTANDARD LVCMOS33} [get_ports write_calibration]
