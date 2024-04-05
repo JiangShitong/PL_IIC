@@ -25,13 +25,14 @@
 `timescale 1ns / 1ps
 module i2c_controller(
 	input wire clk, 
-	input wire rst_n,
-	input wire write_rst,
+	input wire rst,
     input wire write_config,
 	input wire write_calibration,
-	input wire read_current,
-	input wire read_current_continuous,
-	input wire read_config,
+	input wire set_current_address,	
+	input wire set_voltage_address,
+	input wire set_power_address,
+	input wire read_request,	
+
 	inout i2c_sda,
 	output wire i2c_scl  
 	);
@@ -52,9 +53,10 @@ module i2c_controller(
 	localparam READ_DATA2_ACK = 13;		
 	localparam STOP = 14;
 	
-	localparam DIVIDE_BY = 10000; //max 400kHz, min 1kHz
+	localparam DIVIDE_BY = 250; //400kHz max 400kHz, min 1kHz
 	
-	
+	wire rst_n;
+	assign rst_n = !rst;
 	reg [7:0] reg_addr;
 	reg [6:0] device_addr;
 	reg [15:0] data_in;
@@ -75,7 +77,6 @@ module i2c_controller(
 	reg sda_out;
 	reg i2c_scl_enable;
 	reg i2c_clk;
-	reg reg_enable;
 
 	assign ready = ((rst_n == 1) && (state == IDLE)) ? 1 : 0;
 	assign i2c_scl = (i2c_scl_enable == 0 ) ? 1 : i2c_clk;
@@ -94,20 +95,6 @@ module i2c_controller(
 		else counter_for_divide_clk <= counter_for_divide_clk + 1;
 	end 
 
-/*	
-	always @(posedge clk or negedge rst_n) begin
-	    if(!rst_n) begin
-		    reg_enable <= 1'd0;
-	    end
-		else if (enable) begin
-			reg_enable <= 1'd1;
-		end
-		else if (state == START) begin
-		    reg_enable <= 1'd0;
-	    end
-		else reg_enable <= reg_enable;
-	end */	
-
 //SCL enable	
 	always @(posedge i2c_clk or negedge rst_n) begin
 		if(!rst_n) begin
@@ -120,7 +107,9 @@ module i2c_controller(
 			end
 		end	
 	end
+	
 
+wire continuous_read;
 	always @(posedge i2c_clk or negedge rst_n) begin
 		if(!rst_n) begin
 			state <= IDLE;
@@ -133,12 +122,12 @@ module i2c_controller(
 		else begin
 			case(state)			
 				IDLE: begin
-					if (enable) begin
+					if (enable | continuous_read)begin
 						state <= START;
 						saved_device <= {device_addr, rw};
 						saved_data <= data_in;
 						saved_address <= reg_addr;
-					end
+					end			
 					else state <= IDLE;
 				end
 
@@ -154,7 +143,7 @@ module i2c_controller(
 				end	
 
 				DEVICE_ACK: begin
-					//if (i2c_sda == 0) begin					
+					if (i2c_sda == 0) begin					
 					    if(saved_device[0] == 0) begin						
 						state <= ADDRESS;
 						counter <= 7;
@@ -163,8 +152,8 @@ module i2c_controller(
 						state <= READ_DATA1;
 						counter <= 15;
 						end
-					//end 
-					//else state <= STOP;
+					end 
+					else state <= STOP;
 				end				
 
 				ADDRESS: begin
@@ -174,11 +163,14 @@ module i2c_controller(
 				end					
 
 				ADDRESS_ACK: begin
-					//if (i2c_sda == 0) begin
+					if (i2c_sda == 0) begin
 						counter <= 15;
 						if(reg_addr == 8'd2 && !rw) state <= STOP;
+						else if(reg_addr == 8'd4 && !rw) state <= STOP;
+						else if(reg_addr == 8'd3 && !rw) state <= STOP;
 						else state <= WRITE_DATA1;
-					//end else state <= STOP;
+					end 
+					else state <= STOP;
 				end
 
 				WRITE_DATA1: begin
@@ -189,9 +181,9 @@ module i2c_controller(
 				end
 				
 				WRITE_DATA1_ACK: begin
-					//if (i2c_sda == 0) begin
+					if (i2c_sda == 0) begin
                     state <= WRITE_DATA2;
-					//end else state <= STOP;
+					end else state <= STOP;
 				end		
 				
 				WRITE_DATA2: begin
@@ -329,18 +321,6 @@ reg write_config_reg;
 wire write_config_enable;
 assign write_config_enable = (~write_config_reg) & write_config;
 
-reg read_current_reg;
-	always @(posedge i2c_clk or negedge rst_n) begin
-		if(!rst_n) begin
-			read_current_reg <= 0;
-		end else begin
-		    read_current_reg <= read_current;
-		end	
-	end
-
-wire read_current_enable;
-assign read_current_enable = (~read_current_reg) & read_current;
-
 reg write_calibration_reg;
 wire write_calibration_enable;
 always @(posedge i2c_clk or negedge rst_n) begin
@@ -352,42 +332,53 @@ always @(posedge i2c_clk or negedge rst_n) begin
 end
 assign write_calibration_enable = (~write_calibration_reg) & write_calibration;
 
-reg write_rst_reg;
-wire write_rst_enable;
+reg set_current_address_reg;
+wire set_current_address_enable;
+	always @(posedge i2c_clk or negedge rst_n) begin
+		if(!rst_n) begin
+			set_current_address_reg <= 0;
+		end else begin
+		    set_current_address_reg <= set_current_address;
+		end	
+	end
+assign set_current_address_enable = (~set_current_address_reg) & set_current_address;
+
+reg set_voltage_address_reg;
+wire set_voltage_address_enable;
 always @(posedge i2c_clk or negedge rst_n) begin
 	if(!rst_n) begin
-		write_rst_reg <= 0;
+		set_voltage_address_reg <= 0;
 	end else begin
-	    write_rst_reg <= write_rst;
+	    set_voltage_address_reg <= set_voltage_address;
 	end	
 end
-assign write_rst_enable = (~write_rst_reg) & write_rst;
+assign set_voltage_address_enable = (~set_voltage_address_reg) & set_voltage_address;
 
-
-reg read_current_continuous_reg;
-wire read_current_continuous_enable;
+reg  set_power_address_reg;
+wire set_power_address_enable;
 always @(posedge i2c_clk or negedge rst_n) begin
 	if(!rst_n) begin
-		read_current_continuous_reg <= 0;
+		set_power_address_reg <= 0;
 	end else begin
-	    read_current_continuous_reg <= read_current_continuous;
+	    set_power_address_reg <= set_power_address;
 	end	
 end
-assign read_current_continuous_enable = (~read_current_continuous_reg) & read_current_continuous;
+assign set_power_address_enable = (~set_power_address_reg) & set_power_address;
 
-reg read_config_reg;
-wire read_config_enable;
+reg read_request_reg;
+wire read_request_enable;
+assign continuous_read = !read_request_enable & read_request & read_request_reg;
 always @(posedge i2c_clk or negedge rst_n) begin
 	if(!rst_n) begin
-		read_config_reg <= 0;
+		read_request_reg <= 0;
 	end else begin
-	    read_config_reg <= read_config;
+	    read_request_reg <= read_request;
 	end	
 end
-assign read_config_enable = (~read_config_reg) & read_config;
+assign read_request_enable = (~read_request_reg) & read_request;
 
-wire [5:0] config_state;//rst, calibration, config, read, read_continuous 	
-assign config_state = {write_rst_enable, write_calibration_enable, write_config_enable, read_current_enable, read_current_continuous_enable, read_config_enable};
+wire [5:0] config_state;
+assign config_state = {write_config_enable, write_calibration_enable, set_current_address_enable, set_voltage_address_enable, set_power_address_enable, read_request_enable};
 
 always @(posedge i2c_clk or negedge rst_n) begin
     if(!rst_n) begin
@@ -399,48 +390,47 @@ always @(posedge i2c_clk or negedge rst_n) begin
 	end
 	else begin
 		case(config_state)
-		'b100000:begin
-			data_in <= 16'b1011100110011111;
+		'b1000_00:begin
+			data_in <= 16'b1101_0000_0000_0111;
 			device_addr <= 7'b1000000;
 			rw <= 1'd0;
 			reg_addr <= 8'd0;
 			enable <= 1'd1;
 		end
-		'b010000:begin
-			data_in <= 16'h1000;
+		'b0100_00:begin
+			data_in <= 16'd512;
 			device_addr <= 7'b1000000;
 			rw <= 1'd0;
 			reg_addr <= 8'd5;
 			enable <= 1'd1;	
 		end
-		'b001000:begin
-			data_in <= 16'b0000_0000_0000_0110;
+		'b0010_00:begin
+			data_in <= 16'd0;
 			device_addr <= 7'b1000000;
 			rw <= 1'd0;
-			reg_addr <= 8'd0;
-			enable <= 1'd1;	
-		end
-		'b000100:begin
-			data_in <= 16'h0000;
-			device_addr <= 7'b1000000;
-			rw <= 1'd0;
-			reg_addr <= 8'd2;
-			enable <= 1'd1;	
-		end		
-		'b000010:begin
-			data_in <= 16'h0000;
-			device_addr <= 7'b1000000;
-			rw <= 1'd1;
-			reg_addr <= 8'd2;
+			reg_addr <= 8'd4;
 			enable <= 1'd1;	
 		end	
-		'b000001:begin
+		'b0001_00:begin
 			data_in <= 16'h0000;
 			device_addr <= 7'b1000000;
-			rw <= 1'd1;
-			reg_addr <= 8'd0;
+			rw <= 1'd0;
+			reg_addr <= 8'd2;
 			enable <= 1'd1;	
-		end				
+		end			
+		'b0000_10:begin
+			data_in <= 16'h0000;
+			device_addr <= 7'b1000000;
+			rw <= 1'd0;
+			reg_addr <= 8'd3;
+			enable <= 1'd1;	
+		end		
+		'b0000_01:begin
+			data_in <= 16'h0000;
+			device_addr <= 7'b1000000;
+			rw <= 1'd1;			
+			enable <= 1'd1;	
+		end			
 		default:begin
 			enable <= 1'd0;
 		end
